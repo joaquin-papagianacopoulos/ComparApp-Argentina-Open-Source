@@ -932,15 +932,15 @@ document.getElementById("businessForm").addEventListener("submit", function(e) {
   </style>
 </head>
 <body>
-  <div class="logout-wrap">
+   <!-- <div class="logout-wrap">
     <form action="{{ url_for('logout') }}" method="post">
       <button type="submit" class="logout-btn" title="Cerrar sesión">
         <span>⟵</span>
-        <span>Cerrar sesión</span>
+        <span>Cerrar sesión</span> 
       </button>
     </form>
   </div>
-
+ -->
   <!-- Modal para datos del negocio -->
   <div id="businessModal" class="modal" aria-hidden="true" role="dialog">
     <div class="modal-content">
@@ -977,9 +977,9 @@ document.getElementById("businessForm").addEventListener("submit", function(e) {
     </div>
   </div>
 
-  <div class="container">
+<div class="container">
     <div class="header">
-      <div class="user-badge">👤 {{ user }}</div>
+     
       
       <h1>🛍️ ComparApp+</h1>
       <p>Compará productos y armá tu pedido sin gastar de más.</p>

@@ -8,6 +8,7 @@ import re
 import pymysql
 from functools import wraps
 from flask import redirect, url_for, session, request 
+from reportlab.platypus import Image
 
 
 from reportlab.lib.pagesizes import letter
@@ -23,10 +24,9 @@ from flask import send_file
 def login_required(f):
     @wraps(f)
     def wrapper(*a, **kw):
-        if "user" not in session:
-            return redirect(url_for("login"))
         return f(*a, **kw)
     return wrapper
+
 
 def role_required(role):
     def decorator(f):
@@ -48,6 +48,16 @@ app = Flask(__name__)
 app.secret_key = "tios"  
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+
+@app.before_request
+def _ensure_demo_user():
+    # Si no hay sesión, asigno un usuario/rol por defecto para probar
+    if "user" not in session:
+        session["user"] = "demo"
+        session["role"] = "user"
+
+
 
 # === PDFS ===
 app.config['PDFS_FOLDER'] = 'pdfs'
@@ -382,7 +392,9 @@ processor = PriceListProcessor()
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    # Mostrar el panel de usuario directamente sin login
+    return render_template('indexusuario.html', user=session.get("user", "demo"))
+
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -1038,10 +1050,7 @@ def index_pagina():
 
 @app.errorhandler(404)
 def _404_to_login(e):
-    # no interceptes estáticos ni el propio /login
-    if request.path.startswith("/static/") or request.path == "/login":
-        return e, 404
-    return redirect(url_for("login"))
+    return e, 404
 
 
 @app.route("/logout", methods=["POST"])
@@ -1051,11 +1060,11 @@ def logout():
     return redirect(url_for("login"))      # redirige al login
 
 
-@app.before_request
-def _redirect_root_to_login():
-    if request.path == "/":
-        return redirect(url_for("login"))
- 
+# @app.before_request
+# def _redirect_root_to_login():
+#     if request.path == "/":
+#         return redirect(url_for("login"))
+
 @app.route('/business/check', methods=['GET'])
 @login_required
 def check_business_data():
@@ -1087,6 +1096,8 @@ def business_setup():
     
     return jsonify(business_data.get(user, {}))
 
+from reportlab.platypus import Image  # una sola vez, arriba con el resto
+
 def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     """
     Genera el PDF del pedido para un proveedor.
@@ -1101,6 +1112,7 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     print(f"Debug - Datos obtenidos: {prov}")
     print(f"Debug - Tipo direccion: {type(prov.get('direccion'))}, valor: '{prov.get('direccion')}'")
     print(f"Debug - Tipo telefono: {type(prov.get('telefono'))}, valor: '{prov.get('telefono')}'")
+
     supplier_address = (prov.get('direccion') or '').strip() or 'Ubicación no especificada'
     supplier_phone   = (prov.get('telefono')  or '').strip() or 'Teléfono no disponible'
 
@@ -1108,7 +1120,6 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     doc = SimpleDocTemplate(pdf_path, pagesize=letter, topMargin=50, bottomMargin=50)
 
     styles = getSampleStyleSheet()
-
     title_style = ParagraphStyle(
         'CustomTitle',
         parent=styles['Heading1'],
@@ -1133,8 +1144,9 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     story.append(Paragraph(f"PEDIDO PARA {supplier_name.upper()}", title_style))
     story.append(Spacer(1, 20))
 
-    # ---- Datos del comercio
+    # ---- Datos del comercio + LOGO a la derecha
     story.append(Paragraph("DATOS DEL COMERCIO", header_style))
+
     business_info_text = f"""
     <b>Comercio:</b> {business_data.get('business_name', 'N/A')}<br/>
     <b>Persona de Contacto:</b> {business_data.get('contact_person', 'N/A')}<br/>
@@ -1142,7 +1154,31 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     <b>Teléfono:</b> {business_data.get('phone', 'N/A')}<br/>
     <b>Email:</b> {business_data.get('email', 'N/A')}<br/>
     """
-    story.append(Paragraph(business_info_text, styles['Normal']))
+    business_info_paragraph = Paragraph(business_info_text, styles['Normal'])
+
+    # Resolver ruta del logo de forma robusta
+    logo = None
+    try:
+        logo_path = os.path.join(app.root_path, "static", "LOGOWEB.png")
+        if os.path.exists(logo_path):
+            logo = Image(logo_path, width=100, height=50)  # ajustá tamaño a gusto
+    except Exception as e:
+        print(f"⚠️ No se pudo cargar el logo: {e}")
+        logo = None
+
+    if logo:
+        business_table = Table(
+            [[business_info_paragraph, logo]],
+            colWidths=[4.5*inch, 2*inch]
+        )
+        business_table.setStyle(TableStyle([
+            ('VALIGN', (0,0), (-1,-1), 'TOP'),
+            ('ALIGN', (1,0), (1,0), 'RIGHT')
+        ]))
+        story.append(business_table)
+    else:
+        story.append(business_info_paragraph)
+
     story.append(Spacer(1, 25))
 
     # ---- Fecha y Nº de pedido
@@ -1160,7 +1196,6 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
         price = float(item.get('price', 0) or 0.0)
         subtotal = quantity * price
         total += subtotal
-        # Usamos Paragraph para permitir wrap de nombres largos
         table_data.append([
             Paragraph(str(item.get('product', '')), styles['Normal']),
             str(quantity),
@@ -1169,12 +1204,7 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
         ])
 
     # Total
-    table_data.append([
-        '',
-        '',
-        Paragraph('<b>TOTAL:</b>', styles['Normal']),
-        Paragraph(f'<b>${total:,.2f}</b>', styles['Normal'])
-    ])
+    table_data.append(['', '', Paragraph('<b>TOTAL:</b>', styles['Normal']), Paragraph(f'<b>${total:,.2f}</b>', styles['Normal'])])
 
     table = Table(table_data, colWidths=[3.5*inch, 0.8*inch, 1.2*inch, 1.2*inch])
     table.setStyle(TableStyle([
@@ -1187,11 +1217,8 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
 
         ('GRID', (0, 0), (-1, -1), 1, colors.black),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-
-        # Alinear nombre de producto a la izquierda, resto centrado
         ('ALIGN', (0, 1), (0, -2), 'LEFT'),
         ('ALIGN', (1, 1), (-1, -2), 'CENTER'),
-
         ('BACKGROUND', (0, 1), (-1, -2), colors.beige),
         ('BACKGROUND', (0, -1), (-1, -1), colors.lightblue),
         ('FONTNAME',   (0, -1), (-1, -1), 'Helvetica-Bold'),
@@ -1205,7 +1232,6 @@ def generate_pdf_for_supplier(supplier_name, items, business_data, filename):
     <b>Proveedor:</b> {supplier_name}<br/>
     <b>Dirección:</b> {supplier_address}<br/>
     <b>Teléfono:</b> {supplier_phone}<br/>
-
     """
     story.append(Paragraph(supplier_info_text, styles['Normal']))
     story.append(Spacer(1, 20))
@@ -1490,10 +1516,11 @@ def download_pdf(filename):
             return jsonify({'error': 'Archivo no encontrado'}), 404
             
         # Verificar que el archivo pertenece al usuario actual (opcional)
-        user = session['user']
-        safe_user = user.replace(' ', '_').replace('/', '_')
-        if safe_user not in filename:
-            return jsonify({'error': 'Acceso denegado'}), 403
+# user = session['user']
+# safe_user = user.replace(' ', '_').replace('/', '_')
+# if safe_user not in filename:
+#     return jsonify({'error': 'Acceso denegado'}), 403
+
             
         return send_file(
             pdf_path,
