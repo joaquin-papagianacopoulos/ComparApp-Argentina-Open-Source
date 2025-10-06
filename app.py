@@ -6,6 +6,7 @@ import json
 from datetime import datetime
 import re
 import pymysql
+import mysql.connector
 from functools import wraps
 from flask import redirect, url_for, session, request 
 from reportlab.platypus import Image
@@ -869,14 +870,21 @@ def cleanup_temp_files():
             'success': False,
             'message': f'Error limpiando archivos: {str(e)}'
         })
+    
+
 def get_connection():
-    return pymysql.connect(
-        host="gateway01.us-east-1.prod.aws.tidbcloud.com",      # Cambiá si tu servidor MySQL no es local
-        user="2GB2uR7j37bmXpw.root",           # Usuario de MySQL
-        password="TI03zW0skLEYT7Go",# Contraseña de MySQL
-        database="test",    # Base de datos creada
-        ssl={"ca":"isrgrootx1.pem"}
-    )
+    try:
+        connection = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="",
+            database="login_db",
+            charset='utf8mb4'
+        )
+        return connection
+    except mysql.connector.Error as e:
+        print(f"Error al conectar a la base de datos: {e}")
+        return None
 
 def upsert_proveedor(nombre: str, direccion: str | None, telefono: str | None, email: str | None = None):
     """Crea o actualiza un proveedor con su dirección, teléfono y email."""
