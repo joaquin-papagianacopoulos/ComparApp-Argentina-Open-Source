@@ -1010,29 +1010,29 @@ def get_user(username, password):
     return user
 
 
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        password = request.form.get("password", "")
+#@app.route("/login", methods=["GET", "POST"])
+#def login():
+ #  if request.method == "POST":
+  #     username = request.form.get("username", "").strip()
+   #     password = request.form.get("password", "")
 
         # Admin hardcodeado → va a index.html
-        if username == "admintios" and password == "Papagianagerli1":
-            session["user"] = username
-            session["role"] = "admin"
-            return redirect(url_for("index_pagina"))
+    #    if username == "admintios" and password == "Papagianagerli1":
+     #       session["user"] = username
+      #      session["role"] = "admin"
+       #     return redirect(url_for("index_pagina"))
 
         # Resto de usuarios → valida en DB y va a indexusuario.html
-        user = get_user(username, password)
-        if user:
-            session["user"] = username
-            session["role"] = "user"
-            return redirect(url_for("index_usuario"))
+        #user = get_user(username, password)
+        #if user:
+         #   session["user"] = username
+          #  session["role"] = "user"
+           # return redirect(url_for("index_usuario"))
 
-        flash("Usuario o contraseña incorrectos", "error")
-        return redirect(url_for("login"))
+        #flash("Usuario o contraseña incorrectos", "error")
+        #return redirect(url_for("login"))
 
-    return render_template("login.html")
+   # return render_template("login.html")
 
 
 
@@ -1047,13 +1047,13 @@ def index_usuario():
  
 
 
-@app.route("/index")
-def index_pagina():
-    if "user" not in session:
-        return redirect(url_for("login"))
-    if session.get("role") != "admin":
-        return redirect(url_for("index_usuario"))
-    return render_template("index.html", user=session["user"])
+#@app.route("/index")
+#def index_pagina():
+ #   if "user" not in session:
+  #      return redirect(url_for("login"))
+   # if session.get("role") != "admin":
+    #    return redirect(url_for("index_usuario"))
+   # return render_template("index.html", user=session["user"])
 
 
 @app.errorhandler(404)
